@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # PostgreSQL pour jobs et Airflow
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: jobmatching
+      POSTGRES_USER: jobuser
+      POSTGRES_PASSWORD: jobpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Airflow Standalone
+  airflow:
+    image: apache/airflow:2.8.1
+    command: standalone
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./scrapers:/opt/airflow/scrapers
+      - airflow_data:/opt/airflow
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  airflow_data:

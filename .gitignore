@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Data files (éviter de committer les données)
+*.csv
+*.json
+*.parquet
+data/raw/
+data/processed/
+
+# Docker
+.dockerignore
+
+# Airflow
+airflow/logs/
+airflow/*.pid
+airflow/*.log
+airflow/airflow.cfg
+airflow/airflow.db
+airflow/webserver_config.py
+
+# PostgreSQL
+*.sql.backup
+pg_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Secrets (JAMAIS committer)
+.env
+secrets.yml
+config/secrets/
