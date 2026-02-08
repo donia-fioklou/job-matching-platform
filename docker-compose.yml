@@ -34,6 +34,20 @@ services:
     depends_on:
       - postgres
 
+  # API FastAPI pour exposer les données
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://jobuser:jobpass@postgres:5432/jobmatching
+      PYTHONPATH: /app
+    volumes:
+      - ./api/src:/app/src
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   airflow_data:
