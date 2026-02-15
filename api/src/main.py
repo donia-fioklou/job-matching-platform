@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from .routes import jobs_router, health_router
 from .models.database import engine, Base
@@ -97,10 +98,14 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+    # Port configuration for both local and Render
+    port = int(os.getenv("PORT", "8000"))  # Render provides PORT env var
+    host = "0.0.0.0"  # Works both locally and on Render
+    
     uvicorn.run(
         "main:app", 
-        host="0.0.0.0", 
-        port=8000, 
-        reload=True,
+        host=host, 
+        port=port, 
+        reload=True if os.getenv("ENVIRONMENT") != "production" else False,
         log_level="info"
     )

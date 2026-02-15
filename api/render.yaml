@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: job-matching-api
+    env: python
+    region: oregon
+    plan: free
+    # Deploy from api directory only
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn src.main:app --config gunicorn.conf.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Will be set manually in Render dashboard
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+      - key: ENVIRONMENT
+        value: production

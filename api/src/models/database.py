@@ -1,6 +1,6 @@
 """
 Configuration base de données PostgreSQL pour l'API
-Connectée à Supabase PostgreSQL via variables d'environnement
+Compatible développement local (Docker) et production (Render + Supabase)
 """
 
 from sqlalchemy import create_engine
@@ -8,69 +8,18 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-"""
-Configuration base de données PostgreSQL pour l'API
-Connectée à Supabase PostgreSQL avec résolution IPv4 robuste
-"""
-
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import os
-import socket
-import logging
-
-logger = logging.getLogger(__name__)
-
-def resolve_supabase_ipv4(hostname):
+def get_database_url():
     """
-    Résout hostname Supabase vers IPv4 pour éviter problèmes Docker IPv6
-    
-    Args:
-        hostname (str): Hostname Supabase
-        
-    Returns:
-        str: Adresse IPv4 ou hostname original si échec
+    Récupère l'URL de base de données selon l'environnement
+    - Production (Render): DATABASE_URL directement
+    - Développement: Construction depuis variables Supabase
     """
-    try:
-        addr_info = socket.getaddrinfo(
-            hostname, 
-            None, 
-            socket.AF_INET,  # Force IPv4
-            socket.SOCK_STREAM
-        )
-        ipv4_addr = addr_info[0][4][0]
-        logger.info(f"Supabase IPv4 résolu: {hostname} → {ipv4_addr}")
-        return ipv4_addr
-    except Exception as e:
-        logger.warning(f"IPv4 resolution failed for {hostname}: {e}")
-        return hostname  # Fallback sur hostname original
-
-def build_supabase_url():
-    """
-    Construit l'URL de connexion Supabase avec IPv4 forcé
-    Fallback sur variables individuelles si DATABASE_URL n'est pas définie
-    """
-    # Priorité à la DATABASE_URL complète
+    # Priorité à DATABASE_URL (production Render)
     database_url = os.getenv("DATABASE_URL")
-    if database_url and "supabase.co" in database_url:
-        # Parser l'URL pour remplacer hostname par IPv4
-        import re
-        
-        # Extract hostname from URL
-        hostname_match = re.search(r'@([^:/]+)', database_url)
-        if hostname_match:
-            original_hostname = hostname_match.group(1)
-            ipv4_hostname = resolve_supabase_ipv4(original_hostname)
-            
-            # Replace hostname in URL with IPv4
-            if ipv4_hostname != original_hostname:
-                database_url = database_url.replace(original_hostname, ipv4_hostname)
-                logger.info(f"URL modifiée avec IPv4: {original_hostname} → {ipv4_hostname}")
-        
+    if database_url:
         return database_url
     
-    # Sinon, construire depuis variables individuelles avec IPv4
+    # Fallback développement local (variables Supabase séparées)
     host = os.getenv("SUPABASE_HOST")
     port = os.getenv("SUPABASE_PORT", "5432")
     db = os.getenv("SUPABASE_DB", "postgres")
@@ -79,37 +28,50 @@ def build_supabase_url():
     
     if not all([host, password]):
         raise ValueError(
-            "Configuration Supabase incomplète. Variables requises : "
-            "DATABASE_URL ou (SUPABASE_HOST + SUPABASE_PASSWORD)"
+            "Configuration DB manquante. Requis: DATABASE_URL ou SUPABASE_HOST+PASSWORD"
         )
     
-    # Résoudre host vers IPv4
-    ipv4_host = resolve_supabase_ipv4(host)
+    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+def get_engine_config():
+    """
+    Configuration SQLAlchemy selon l'environnement
+    """
+    environment = os.getenv("ENVIRONMENT", "development")
     
-    return f"postgresql://{user}:{password}@{ipv4_host}:{port}/{db}"
+    if environment == "production":
+        # Configuration Render/cloud optimisée
+        return {
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_pre_ping": True,
+            "pool_recycle": 3600,
+            "echo": False,
+            "connect_args": {
+                "sslmode": "require",
+                "connect_timeout": 10,
+                "application_name": "job_matching_api_prod"
+            }
+        }
+    else:
+        # Configuration développement local
+        return {
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_pre_ping": True,
+            "echo": False,  # Set True pour debug SQL local
+            "connect_args": {
+                "sslmode": "require",
+                "connect_timeout": 15,
+                "application_name": "job_matching_api_dev"
+            }
+        }
 
-# Configuration DB Supabase avec IPv4
-DATABASE_URL = build_supabase_url()
+# Configuration base de données
+DATABASE_URL = get_database_url()
+engine_config = get_engine_config()
 
-# Engine avec configuration optimisée pour Supabase production
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=3,         # Réduit pour Supabase (limites connexion)
-    max_overflow=7,      # Plus conservateur pour hosted DB
-    pool_pre_ping=True,  # Critical pour connexions distantes
-    pool_recycle=1800,   # Recycler connexions après 30min
-    echo=False,          # Set to True pour debug SQL
-    # Options critiques pour Supabase IPv4 + SSL
-    connect_args={
-        "sslmode": "require",              # Supabase require SSL
-        "connect_timeout": 15,             # Timeout robuste
-        "application_name": "job_matching_api",  # Pour monitoring
-        "keepalives_idle": 600,            # Keep-alive pour stabilité
-        "keepalives_interval": 30,
-        "keepalives_count": 3
-    }
-)
-
+engine = create_engine(DATABASE_URL, **engine_config)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
