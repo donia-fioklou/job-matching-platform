@@ -1,25 +1,17 @@
 version: '3.8'
 
-services:
-  # PostgreSQL pour jobs et Airflow
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_DB: jobmatching
-      POSTGRES_USER: jobuser
-      POSTGRES_PASSWORD: jobpass
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+# Simple IPv6 setup for Supabase
+networks:
+  default:
+    enable_ipv6: true
 
-  # Airflow Standalone
+services:
+  # Airflow Standalone (connecté à Supabase)
   airflow:
     image: apache/airflow:2.8.1
     command: standalone
     ports:
-      - "8080:8080"
+      - "${AIRFLOW_PORT:-8080}:8080"
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
@@ -27,27 +19,42 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
+      # Variables Supabase pour les DAGs
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL}
+      SUPABASE_HOST: ${SUPABASE_HOST}
+      SUPABASE_PORT: ${SUPABASE_PORT}
+      SUPABASE_DB: ${SUPABASE_DB}
+      SUPABASE_USER: ${SUPABASE_USER}
+      SUPABASE_PASSWORD: ${SUPABASE_PASSWORD}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./scrapers:/opt/airflow/scrapers
       - airflow_data:/opt/airflow
-    depends_on:
-      - postgres
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8  # Google DNS pour résolution fiable
+      - 1.1.1.1  # Cloudflare DNS backup
 
-  # API FastAPI pour exposer les données
+  # API FastAPI pour exposer les données (connectée à Supabase)
   api:
     build: ./api
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql://jobuser:jobpass@postgres:5432/jobmatching
+      DATABASE_URL: ${SUPABASE_DATABASE_URL}
       PYTHONPATH: /app
+      # Variables Supabase individuelles (backup)
+      SUPABASE_HOST: ${SUPABASE_HOST}
+      SUPABASE_PORT: ${SUPABASE_PORT}
+      SUPABASE_DB: ${SUPABASE_DB}
+      SUPABASE_USER: ${SUPABASE_USER}
+      SUPABASE_PASSWORD: ${SUPABASE_PASSWORD}
     volumes:
       - ./api/src:/app/src
-    depends_on:
-      - postgres
+    env_file:
+      - .env
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   airflow_data:

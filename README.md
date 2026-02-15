@@ -1,53 +1,93 @@
-# Job Matching Platform - Version Simple
+# Job Matching Platform - Architecture Moderne
 
-## Architecture Ultra-Simple
+## 🏗 **Architecture Supabase + API**
 
 ```
-Emploitogo.info → Airflow (1 task) → PostgreSQL
+Sites d'emploi → Airflow (scraping) → Supabase PostgreSQL → FastAPI → Applications
 ```
 
-**Une seule tâche Airflow** qui fait tout :
-1. Scrape emploitogo.info
-2. Insert/Update PostgreSQL  
-3. Déduplication par job_url
+**Pipeline moderne** :
+1. **Scrapers Airflow** : emploi.tg, goafricaonline, emploi_info
+2. **Base Supabase** : PostgreSQL managé avec déduplication  
+3. **API FastAPI** : Endpoints REST pour exposition des données
 
-## Démarrage
+## ⚙️ **Configuration initiale**
 
+### **1. Setup Supabase**
 ```bash
-# 1. Démarrer
+# 1. Créer projet sur supabase.com
+# 2. Configurer .env avec vos credentials (voir .env.example)
+# 3. Initialiser le schema
+python init_supabase.py
+```
+
+### **2. Démarrage des services**
+```bash
+# 1. Démarrer l'infrastructure
 docker-compose up -d
 
-# 2. Airflow UI
-http://localhost:8080 
-Login: admin / admin
-
-# 3. Activer le DAG "hourly_job_scraping"
+# 2. Interfaces disponibles
+# Airflow: http://localhost:8080 (admin/admin)
+# API: http://localhost:8000/docs
+# Health: http://localhost:8000/health
 ```
 
-## Vérifier les données
+## 📊 **Vérifier les données**
 
+### **Via API REST**
 ```bash
-# Connexion DB
-docker-compose exec postgres psql -U jobuser -d jobmatching
+# Statistiques globales
+curl http://localhost:8000/jobs/stats
 
-# Voir les jobs
-SELECT title, company, scraped_at FROM job_offers ORDER BY scraped_at DESC LIMIT 10;
+# 10 dernières offres
+curl http://localhost:8000/jobs?limit=10&sort_order=desc
+
+# Recherche par entreprise
+curl "http://localhost:8000/jobs?company=Orange&limit=5"
 ```
 
-## Structure
+### **Via Supabase Dashboard**
+Accédez à votre projet Supabase → Table Editor → `job_offers`
+## 🗂 **Structure du projet**
 
 ```
 job-matching-platform/
-├── docker-compose.yml          # PostgreSQL + Airflow standalone
-├── database/init.sql            # Une seule table job_offers
-├── scrapers/scraper.py          # Script scraping simple
-└── airflow/dags/simple_job_scraping.py  # DAG avec 1 tâche
+├── scrapers/               # Scripts de collecte
+├── airflow/dags/          # Orchestration (3 DAGs)
+├── api/                   # FastAPI REST endpoints
+├── database/init.sql      # Schema PostgreSQL
+├── docker-compose.yml     # Infrastructure Supabase + API
+├── init_supabase.py      # Script d'initialisation DB
+└── .env                  # Configuration (à remplir)
 ```
 
-## Base de Données
+## 🔗 **API Endpoints**
 
-**Table unique** : `job_offers`
-- `job_url` (UNIQUE) → déduplication
+| Endpoint | Description | Example |
+|----------|-------------|---------|
+| `GET /jobs` | Liste avec filtres/pagination | `/jobs?company=Orange&limit=10` |
+| `GET /jobs/{id}` | Détail d'une offre | `/jobs/123` |
+| `GET /jobs/stats` | Statistiques globales | Nb total, sources, etc. |
+| `GET /health` | Health checks | Status API + DB |
+
+**Documentation interactive** : http://localhost:8000/docs
+
+## 🚀 **Avantages de cette architecture**
+
+- ✅ **Scalable** : Supabase gère la montée en charge
+- ✅ **API REST** : Intégration facile apps/frontend  
+- ✅ **Monitoring** : Health checks et statistiques
+- ✅ **Moderne** : FastAPI async + PostgreSQL managé
+- ✅ **Sécurisé** : SSL par défaut, credentials isolés
+
+## 📋 **Migration & Support**
+
+- 📖 **Guide détaillé** : [MIGRATION_SUPABASE.md](MIGRATION_SUPABASE.md)
+- 🔧 **API Documentation** : [api/README.md](api/README.md)  
+- ⚠️ **Troubleshooting** : Voir section dédiée dans guides
+
+---
+**🎯 Platform prête pour développement d'IA matching candidat/offre !**
 - `title, company, location, description` → données de base
 - `scraped_at` → timestamp
 

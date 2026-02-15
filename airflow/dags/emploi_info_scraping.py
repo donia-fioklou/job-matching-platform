@@ -10,6 +10,7 @@ import sys
 sys.path.append('/opt/airflow/scrapers')
 
 import psycopg2
+from supabase_utils import get_supabase_connection
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from scrape_emploi_togo import scrape_emploi_togo, extract_job_details as scraper_extract_details
@@ -133,14 +134,8 @@ def merge_and_load(**context):
     
     print(f"Phase 3: Merged {len(merged_jobs)} complete job records")
     
-    # Load en base PostgreSQL
-    conn = psycopg2.connect(
-        host='postgres',
-        port=5432,
-        database='jobmatching',
-        user='jobuser',
-        password='jobpass'
-    )
+    # Load en base Supabase PostgreSQL
+    conn = get_supabase_connection()
     
     cursor = conn.cursor()
     inserted = 0

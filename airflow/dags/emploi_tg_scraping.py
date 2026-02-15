@@ -18,6 +18,9 @@ sys.path.append('/opt/airflow/scrapers')
 # Import du scraper emploi.tg
 from emploi_tg_scraper import scrape_emploi_tg
 
+# Import des utilitaires Supabase
+from supabase_utils import get_supabase_connection
+
 # Import de la librairie pour PostgreSQL
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -52,14 +55,8 @@ def load_jobs(**context):
     
     print(f"Received {len(jobs_data)} jobs to load")
     
-    # Connexion à PostgreSQL
-    conn = psycopg2.connect(
-        host='postgres',
-        port=5432,
-        database='jobmatching',
-        user='jobuser',
-        password='jobpass'
-    )
+    # Connexion à Supabase PostgreSQL
+    conn = get_supabase_connection()
     
     cursor = conn.cursor()
     
