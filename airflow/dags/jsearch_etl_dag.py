@@ -9,7 +9,8 @@ import os
 
 # Correction des chemins pour les imports
 sys.path.append('/opt/airflow/scrapers')
-sys.path.append('/opt/airflow/get-job-api')
+sys.path.append('/opt/airflow/getJobApi')
+sys.path.append('/opt/airflow')
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -44,10 +45,10 @@ def extract_jobs(**context):
     
     # Appel de l'API via la fonction du module linkedin_api
     api_response = fetch_jobs(
-        query="developer jobs in Togo",
-        country="tg", 
-        language="fr",
-        date_posted="week"
+        query="developer jobs in in new york via linkedin",
+        country="us", 
+        language="en",
+        date_posted="all"
     )
     
     # Vérifier que l'API a répondu correctement

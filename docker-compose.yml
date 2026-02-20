@@ -29,6 +29,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./scrapers:/opt/airflow/scrapers
+      - ./getJobApi:/opt/airflow/getJobApi
       - airflow_data:/opt/airflow
     env_file:
       - .env
