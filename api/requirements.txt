@@ -18,9 +18,8 @@ python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# Embeddings et vecteurs
-sentence-transformers>=2.7.0
-huggingface_hub>=0.20.0
+# Embeddings et vecteurs (modèle exécuté via HF Inference API — pas de chargement local)
+httpx>=0.27.0
 numpy>=1.24.0
 pgvector>=0.2.4
 

@@ -1,10 +1,15 @@
 """
 Service de matching CV / offres d'emploi
-Extraction texte PDF + embedding + recherche vectorielle cosine
+Extraction texte PDF + embedding via HuggingFace Inference API + recherche vectorielle cosine
+
+HF Inference API : aucun modèle chargé en mémoire localement (~0 MB RAM).
+Même modèle que l'embedding_generator.py → vecteurs compatibles.
 """
 
+import os
 import pdfplumber
 import numpy as np
+import httpx
 import logging
 from io import BytesIO
 from typing import List
@@ -13,17 +18,8 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-# Modèle chargé une seule fois au démarrage (singleton)
-_model = None
-
-def get_embedding_model():
-    global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
-        logger.info("Chargement du modèle d'embedding...")
-        _model = SentenceTransformer("sentence-transformers/distiluse-base-multilingual-cased")
-        logger.info("Modèle chargé.")
-    return _model
+HF_MODEL = "sentence-transformers/distiluse-base-multilingual-cased"
+HF_API_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{HF_MODEL}"
 
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
@@ -49,13 +45,41 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     return full_text
 
 
-def embed_text(text: str) -> np.ndarray:
+def embed_text(cv_text: str) -> np.ndarray:
     """
-    Génère un embedding normalisé 512-dim pour un texte donné.
+    Génère un embedding normalisé 512-dim via HuggingFace Inference API.
+    Aucun modèle n'est chargé localement — économise ~500 MB de RAM.
     """
-    model = get_embedding_model()
-    embedding = model.encode(text, normalize_embeddings=True)
-    return embedding.astype(np.float32)
+    token = os.getenv("HF_API_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    with httpx.Client(timeout=60.0) as client:
+        response = client.post(
+            HF_API_URL,
+            headers=headers,
+            json={"inputs": cv_text, "options": {"wait_for_model": True}},
+        )
+
+    if response.status_code == 503:
+        raise RuntimeError(
+            "Le modèle HuggingFace est en cours de chargement, réessaie dans quelques secondes."
+        )
+    response.raise_for_status()
+
+    data = response.json()
+
+    # L'API retourne [[float...]] pour un input unique — on prend le premier élément
+    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+        vector = np.array(data[0], dtype=np.float32)
+    else:
+        vector = np.array(data, dtype=np.float32)
+
+    # Normalisation L2 (équivalent à normalize_embeddings=True de sentence-transformers)
+    norm = np.linalg.norm(vector)
+    if norm > 0:
+        vector = vector / norm
+
+    return vector
 
 
 def find_matching_jobs(

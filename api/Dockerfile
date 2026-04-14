@@ -11,9 +11,6 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pré-téléchargement du modèle d'embedding au build (évite timeout au 1er appel)
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/distiluse-base-multilingual-cased')"
-
 # Copy source code
 COPY src/ ./src/
 
