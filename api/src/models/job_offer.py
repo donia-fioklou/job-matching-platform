@@ -5,6 +5,7 @@ Correspond exactement au schema PostgreSQL existant
 
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, func
 from sqlalchemy.sql import text
+from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
@@ -36,9 +37,9 @@ class JobOffer(Base):
     salary_range = Column(Text)
     experience_level = Column(Text)
     
-    # Embedding fields (futures)
-    embedding_description = Column(Text)
-    embedding_skills = Column(Text)
+    # Embedding fields
+    embedding_description = Column(Vector(512))
+    embedding_skills = Column(Vector(512))
     
     # Métadonnées
     created_at = Column(DateTime, default=func.now())

@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 import logging
 import os
 
-from .routes import jobs_router, health_router
+from .routes import jobs_router, health_router, candidates_router
 from .models.database import engine, Base
 
 # Configuration logging
@@ -78,6 +78,7 @@ app.add_middleware(
 # Enregistrement des routes
 app.include_router(health_router)
 app.include_router(jobs_router)
+app.include_router(candidates_router)
 
 @app.get("/", tags=["Root"])
 async def root():
