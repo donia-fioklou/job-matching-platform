@@ -1,15 +1,10 @@
 """
 Service de matching CV / offres d'emploi
-Extraction texte PDF + embedding via HuggingFace Inference API + recherche vectorielle cosine
-
-HF Inference API : aucun modèle chargé en mémoire localement (~0 MB RAM).
-Même modèle que l'embedding_generator.py → vecteurs compatibles.
+Extraction texte PDF + embedding local (sentence-transformers) + recherche vectorielle cosine
 """
 
-import os
 import pdfplumber
 import numpy as np
-import httpx
 import logging
 from io import BytesIO
 from typing import List
@@ -18,15 +13,23 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-HF_MODEL = "sentence-transformers/distiluse-base-multilingual-cased"
-HF_API_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{HF_MODEL}"
+MODEL_NAME = "sentence-transformers/distiluse-base-multilingual-cased"
+
+# Singleton : charg� une seule fois au 1er appel
+_model = None
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        logger.info(f"Chargement du modele {MODEL_NAME}...")
+        _model = SentenceTransformer(MODEL_NAME)
+        logger.info("Modele charge.")
+    return _model
 
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """
-    Extrait le texte brut d'un fichier PDF.
-    Lève ValueError si le PDF est vide ou illisible.
-    """
     text_parts = []
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         if len(pdf.pages) == 0:
@@ -39,47 +42,16 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     full_text = "\n".join(text_parts).strip()
     if not full_text:
         raise ValueError(
-            "Impossible d'extraire du texte du PDF. "
-            "Le fichier est peut-être scanné (image) sans OCR."
+            "Impossible d extraire du texte du PDF. "
+            "Le fichier est peut-etre scanne (image) sans OCR."
         )
     return full_text
 
 
 def embed_text(cv_text: str) -> np.ndarray:
-    """
-    Génère un embedding normalisé 512-dim via HuggingFace Inference API.
-    Aucun modèle n'est chargé localement — économise ~500 MB de RAM.
-    """
-    token = os.getenv("HF_API_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-
-    with httpx.Client(timeout=60.0) as client:
-        response = client.post(
-            HF_API_URL,
-            headers=headers,
-            json={"inputs": cv_text, "options": {"wait_for_model": True}},
-        )
-
-    if response.status_code == 503:
-        raise RuntimeError(
-            "Le modèle HuggingFace est en cours de chargement, réessaie dans quelques secondes."
-        )
-    response.raise_for_status()
-
-    data = response.json()
-
-    # L'API retourne [[float...]] pour un input unique — on prend le premier élément
-    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-        vector = np.array(data[0], dtype=np.float32)
-    else:
-        vector = np.array(data, dtype=np.float32)
-
-    # Normalisation L2 (équivalent à normalize_embeddings=True de sentence-transformers)
-    norm = np.linalg.norm(vector)
-    if norm > 0:
-        vector = vector / norm
-
-    return vector
+    model = _get_model()
+    embedding = model.encode(cv_text, normalize_embeddings=True)
+    return embedding.astype(np.float32)
 
 
 def find_matching_jobs(
@@ -88,11 +60,6 @@ def find_matching_jobs(
     top_k: int = 10,
     min_score: float = 0.0,
 ) -> List[dict]:
-    """
-    Recherche les offres les plus proches par cosine similarity.
-    Retourne une liste de dicts avec les champs de l'offre + score.
-    """
-    # Convertit le vecteur numpy en liste pour pgvector
     vector_str = "[" + ",".join(str(float(x)) for x in cv_embedding) + "]"
 
     sql = text("""
@@ -108,10 +75,10 @@ def find_matching_jobs(
             contract_type,
             experience_level,
             salary_range,
-            1 - (embedding_description <=> :embedding::vector) AS score
+            1 - (embedding_description <=> CAST(:embedding AS vector)) AS score
         FROM job_offers
         WHERE embedding_description IS NOT NULL
-        ORDER BY embedding_description <=> :embedding::vector
+        ORDER BY embedding_description <=> CAST(:embedding AS vector)
         LIMIT :top_k
     """)
 

@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements et install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Torch CPU-only d'abord (~200MB vs ~2GB pour GPU)
+RUN pip install --no-cache-dir --timeout=180 --retries=5 \
+    torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir --timeout=180 --retries=5 -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/

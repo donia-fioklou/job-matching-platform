@@ -1,24 +1,48 @@
 version: '3.8'
 
-# Simple IPv6 setup for Supabase
+# Networks
 networks:
   default:
-    enable_ipv6: true
+    enable_ipv6: false
 
 services:
-  # Airflow Standalone (connecté à Supabase)
-  airflow:
-    image: apache/airflow:2.8.1
-    command: standalone
-    ports:
-      - "${AIRFLOW_PORT:-8080}:8080"
+  # PostgreSQL pour metadata Airflow (remplace SQLite)
+  postgres:
+    image: postgres:13
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  # Airflow Init - Initialisation DB + création user admin
+  airflow-init:
+    build: ./airflow
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Africa/Lome
+      AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Africa/Lome
       # Variables Supabase pour les DAGs
       SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL}
       SUPABASE_HOST: ${SUPABASE_HOST}
@@ -30,12 +54,98 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./scrapers:/opt/airflow/scrapers
       - ./getJobApi:/opt/airflow/getJobApi
-      - airflow_data:/opt/airflow
+      - ./scripts:/opt/airflow/scripts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+
+  # Airflow Webserver - Interface web uniquement
+  airflow-webserver:
+    build: ./airflow
+    command: webserver
+    ports:
+      - "${AIRFLOW_PORT:-8081}:8080"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Africa/Lome
+      AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Africa/Lome
+      # Variables Supabase pour les DAGs
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL}
+      SUPABASE_HOST: ${SUPABASE_HOST}
+      SUPABASE_PORT: ${SUPABASE_PORT}
+      SUPABASE_DB: ${SUPABASE_DB}
+      SUPABASE_USER: ${SUPABASE_USER}
+      SUPABASE_PASSWORD: ${SUPABASE_PASSWORD}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./scrapers:/opt/airflow/scrapers
+      - ./getJobApi:/opt/airflow/getJobApi
+      - ./scripts:/opt/airflow/scripts
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
     env_file:
       - .env
     dns:
-      - 8.8.8.8  # Google DNS pour résolution fiable
-      - 1.1.1.1  # Cloudflare DNS backup
+      - 8.8.8.8
+      - 1.1.1.1
+
+  # Airflow Scheduler - Orchestration des DAGs
+  airflow-scheduler:
+    build: ./airflow
+    command: scheduler
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Africa/Lome
+      # Variables Supabase pour les DAGs
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL}
+      SUPABASE_HOST: ${SUPABASE_HOST}
+      SUPABASE_PORT: ${SUPABASE_PORT}
+      SUPABASE_DB: ${SUPABASE_DB}
+      SUPABASE_USER: ${SUPABASE_USER}
+      SUPABASE_PASSWORD: ${SUPABASE_PASSWORD}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./scrapers:/opt/airflow/scrapers
+      - ./getJobApi:/opt/airflow/getJobApi
+      - ./scripts:/opt/airflow/scripts
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
   # API FastAPI pour exposer les données (connectée à Supabase)
   api:
@@ -45,17 +155,21 @@ services:
     environment:
       DATABASE_URL: ${SUPABASE_DATABASE_URL}
       PYTHONPATH: /app
-      # Variables Supabase individuelles (backup)
       SUPABASE_HOST: ${SUPABASE_HOST}
       SUPABASE_PORT: ${SUPABASE_PORT}
       SUPABASE_DB: ${SUPABASE_DB}
       SUPABASE_USER: ${SUPABASE_USER}
       SUPABASE_PASSWORD: ${SUPABASE_PASSWORD}
+      HF_API_TOKEN: ${HF_API_TOKEN}
     volumes:
       - ./api/src:/app/src
     env_file:
       - .env
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
 volumes:
-  airflow_data:
+  postgres-db-volume:
+  airflow-logs:

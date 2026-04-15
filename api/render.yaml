@@ -16,4 +16,4 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: HF_API_TOKEN
-        sync: false  # À définir dans le dashboard Render
+        sync: false  # Will be set manually in Render dashboard
