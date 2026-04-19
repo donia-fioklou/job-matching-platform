@@ -1,6 +1,9 @@
 -- Schema PostgreSQL pour Job Matching Platform
 -- Architecture Two-Phase : Base Jobs + Detailed Descriptions
 
+-- Extensions requises
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE IF NOT EXISTS job_offers (
     id SERIAL PRIMARY KEY,
     job_url TEXT UNIQUE NOT NULL,
@@ -22,9 +25,8 @@ CREATE TABLE IF NOT EXISTS job_offers (
     salary_range TEXT,
     experience_level TEXT,
     
-    -- Champs pour embedding et matching (future)
-    embedding_description TEXT,
-    embedding_skills TEXT,
+    -- Champs pour embedding et matching
+    embedding_description VECTOR(512),
     
     -- Métadonnées
     created_at TIMESTAMP DEFAULT NOW(),
@@ -38,6 +40,11 @@ CREATE INDEX IF NOT EXISTS idx_job_offers_scraped_at ON job_offers(scraped_at);
 CREATE INDEX IF NOT EXISTS idx_job_offers_has_full_description ON job_offers(has_full_description);
 CREATE INDEX IF NOT EXISTS idx_job_offers_location ON job_offers(location);
 CREATE INDEX IF NOT EXISTS idx_job_offers_source ON job_offers(source);
+
+-- Index vectoriel pour recherche sémantique (cosine)
+CREATE INDEX IF NOT EXISTS idx_job_offers_embedding_description
+ON job_offers USING ivfflat (embedding_description vector_cosine_ops)
+WITH (lists = 100);
 
 -- Vue pour monitoring des phases de scraping
 CREATE OR REPLACE VIEW scraping_stats AS 

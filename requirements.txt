@@ -2,3 +2,7 @@
 requests==2.31.0
 beautifulsoup4==4.12.2
 psycopg2-binary==2.9.7
+
+# Embeddings et vecteurs
+sentence-transformers==2.2.2
+numpy>=1.24.0

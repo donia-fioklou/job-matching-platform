@@ -15,7 +15,8 @@ def get_database_url():
     - Développement: Construction depuis variables Supabase
     """
     # Priorité à DATABASE_URL (production Render)
-    database_url = os.getenv("DATABASE_URL")
+    # database_url = os.getenv("DATABASE_URL")
+    database_url = os.getenv("SUPABASE_DATABASE_URL")
     if database_url:
         return database_url
     

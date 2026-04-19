@@ -27,7 +27,7 @@ dag = DAG(
     'jsearch_etl_jobs',
     default_args=default_args,
     description='ETL simple pour JSearch API',
-    schedule='0 */8 * * *',  # Toutes les 8 heures
+    schedule='0 */1 * * *',  # Toutes les heures
     catchup=False,
     tags=['etl', 'jsearch', 'jobs']
 )

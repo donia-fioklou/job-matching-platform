@@ -5,8 +5,10 @@ import os
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"  # Render provides PORT env var
 backlog = 2048
 
-# Worker processes - for free tier, keep it simple
-workers = 1  # Free tier has limited memory
+# Worker processes
+# VPS production: (2 * CPU cores) + 1. Ajuster selon votre VPS Contabo.
+import multiprocessing
+workers = multiprocessing.cpu_count() * 2 + 1
 worker_class = "uvicorn.workers.UvicornWorker"  # Use uvicorn worker for FastAPI
 worker_connections = 1000
 max_requests = 1000

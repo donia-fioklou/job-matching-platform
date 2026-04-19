@@ -1,0 +1,31 @@
+# Override pour production VPS Contabo
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    # Remplace uvicorn --reload par gunicorn en production
+    command: gunicorn src.main:app --config gunicorn.conf.py
+    environment:
+      PORT: "8000"
+      ENVIRONMENT: production
+    restart: always
+
+  airflow-webserver:
+    environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+
+  airflow-scheduler:
+    environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+
+  airflow-init:
+    environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}

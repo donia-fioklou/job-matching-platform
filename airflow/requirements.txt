@@ -1,0 +1,15 @@
+# Dépendances Python supplémentaires pour Airflow
+# Ces packages s'ajoutent à ceux déjà présents dans l'image apache/airflow:2.8.1
+
+# Embeddings et ML
+sentence-transformers==2.7.0
+transformers==4.38.2
+huggingface-hub==0.22.2
+numpy>=1.24.0
+
+# Base de données (normalement déjà présent mais on s'assure)
+psycopg2-binary==2.9.7
+
+# Web scraping (pour les DAGs de scraping)
+requests==2.31.0
+beautifulsoup4==4.12.2
