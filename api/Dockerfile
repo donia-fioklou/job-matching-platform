@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir --timeout=180 --retries=5 -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/
+COPY gunicorn.conf.py .
 
 # Variables d'environnement
 ENV PYTHONPATH=/app
