@@ -6,16 +6,17 @@ bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"  # Render provides PORT env var
 backlog = 2048
 
 # Worker processes
-# VPS production: (2 * CPU cores) + 1. Ajuster selon votre VPS Contabo.
+# 1 worker pour economiser la RAM (modele sentence-transformers ~500MB)
+# Le modele est charge une seule fois grace a preload_app=True
 import multiprocessing
-workers = multiprocessing.cpu_count() * 2 + 1
+workers = 1
 worker_class = "uvicorn.workers.UvicornWorker"  # Use uvicorn worker for FastAPI
 worker_connections = 1000
 max_requests = 1000
 max_requests_jitter = 50
 
 # Timeouts
-timeout = 30
+timeout = 120  # 120s pour laisser le temps au modele de charger au 1er appel
 keepalive = 2
 
 # Logging

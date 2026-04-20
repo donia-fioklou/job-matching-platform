@@ -11,6 +11,7 @@ import os
 
 from .routes import jobs_router, health_router, candidates_router
 from .models.database import engine, Base
+from .services.matching_service import _get_model
 
 # Configuration logging
 logging.basicConfig(level=logging.INFO)
@@ -24,11 +25,16 @@ async def lifespan(app: FastAPI):
     # Startup: Créer les tables si nécessaire (normalement déjà créées par init.sql)
     logger.info("Starting Job Matching API...")
     try:
-        # Vérifie que les tables existent (sans les recréer)
         Base.metadata.reflect(bind=engine)
         logger.info("Database connection verified")
     except Exception as e:
         logger.error(f"Database connection error: {e}")
+
+    # Pré-chargement du modèle sentence-transformers au démarrage
+    try:
+        _get_model()
+    except Exception as e:
+        logger.error(f"Model loading error: {e}")
         
     yield
     

@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir --timeout=180 --retries=5 -r requirements.txt
 COPY src/ ./src/
 COPY gunicorn.conf.py .
 
+# Pre-télécharger le modèle dans l'image (evite le download au runtime)
+ENV HF_HOME=/app/.cache/huggingface
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/distiluse-base-multilingual-cased')"
+
 # Variables d'environnement
 ENV PYTHONPATH=/app
 ENV PYTHONDONTWRITEBYTECODE=1
