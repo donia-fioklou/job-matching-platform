@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 import logging
 import os
 
-from .routes import jobs_router, health_router, candidates_router
+from .routes import jobs_router, health_router, candidates_router, recruiters_router
 from .models.database import engine, Base
 from .services.matching_service import _get_model
 
@@ -85,6 +85,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(jobs_router)
 app.include_router(candidates_router)
+app.include_router(recruiters_router)
 
 @app.get("/", tags=["Root"])
 async def root():
