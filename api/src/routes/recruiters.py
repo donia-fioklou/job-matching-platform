@@ -1,16 +1,20 @@
-"""
+﻿"""
 Routes recruteurs — matching description de poste → candidats
 """
+
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 
 from ..models.database import get_db
 from ..models.candidate import CandidateProfile
 from ..services.matching_service import embed_text
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/recruiters", tags=["Recruiters"])
 
@@ -35,15 +39,6 @@ async def match_candidates(
     body: RecruiterMatchRequest,
     db: Session = Depends(get_db),
 ):
-    """
-    Prend une description de poste en texte libre et retourne les candidats
-    dont le CV correspond le mieux, classés par score de similarité cosine.
-
-    **Étapes :**
-    1. Génération de l'embedding de la description de poste
-    2. Recherche vectorielle cosine dans la table `candidates`
-    3. Retour des profils triés par score décroissant
-    """
     if not body.job_description.strip():
         raise HTTPException(status_code=400, detail="La description de poste est vide.")
 
@@ -69,9 +64,15 @@ async def match_candidates(
         LIMIT :top_k
     """)
 
-    rows = db.execute(
-        sql, {"embedding": vector_str, "top_k": body.top_k}
-    ).mappings().all()
+    try:
+        rows = db.execute(
+            sql, {"embedding": vector_str, "top_k": body.top_k}
+        ).mappings().all()
+    except Exception as e:
+        logger.error(f"Erreur SQL match_candidates: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur base de données : {e}")
+
+    logger.info(f"match_candidates: {len(rows)} lignes retournées, min_score={body.min_score}")
 
     results = []
     for row in rows:

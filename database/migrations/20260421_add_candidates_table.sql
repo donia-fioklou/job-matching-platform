@@ -23,6 +23,6 @@ CREATE TABLE IF NOT EXISTS candidates (
 CREATE INDEX IF NOT EXISTS idx_candidates_email ON candidates(email);
 
 -- Index vectoriel cosine pour matching recruteur → candidat
+-- hnsw fonctionne dès 1 candidat (ivfflat nécessite ~lists*10 lignes minimum)
 CREATE INDEX IF NOT EXISTS idx_candidates_cv_embedding
-    ON candidates USING ivfflat (cv_embedding vector_cosine_ops)
-    WITH (lists = 50);
+    ON candidates USING hnsw (cv_embedding vector_cosine_ops);
