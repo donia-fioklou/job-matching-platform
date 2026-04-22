@@ -41,8 +41,8 @@ class MatchResponse(BaseModel):
 @router.post("/match", response_model=MatchResponse, summary="Matcher un CV (PDF) avec les offres d'emploi")
 async def match_cv(
     file: UploadFile = File(..., description="CV au format PDF (max 5 Mo)"),
-    top_k: int = Query(10, ge=1, le=50, description="Nombre d'offres à retourner"),
-    min_score: float = Query(0.0, ge=0.0, le=1.0, description="Score minimum de similarité (0 à 1)"),
+    top_k: int = Query(3, ge=1, le=50, description="Nombre d'offres à retourner"),
+    min_score: float = Query(0.3, ge=0.0, le=1.0, description="Score minimum de similarité (0 à 1, défaut: 0.5)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -132,7 +132,7 @@ async def register_candidate(
         raise HTTPException(status_code=422, detail=str(e))
 
     try:
-        cv_embedding = embed_text(cv_text)
+        cv_embedding = embed_text(cv_text, job_title=job_title)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur embedding : {e}")
 

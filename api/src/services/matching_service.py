@@ -48,9 +48,14 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     return full_text
 
 
-def embed_text(cv_text: str) -> np.ndarray:
+def embed_text(cv_text: str, job_title: str = None) -> np.ndarray:
     model = _get_model()
-    embedding = model.encode(cv_text, normalize_embeddings=True)
+    if job_title and job_title.strip():
+        # On donne plus de poids au titre (x3)
+        text = (job_title.strip() + ". ") * 10 + cv_text
+    else:
+        text = cv_text
+    embedding = model.encode(text, normalize_embeddings=True)
     return embedding.astype(np.float32)
 
 
@@ -103,4 +108,5 @@ def find_matching_jobs(
                 "score": round(score, 4),
             })
 
+    results.sort(key=lambda x: x["score"], reverse=True)
     return results
