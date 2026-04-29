@@ -13,7 +13,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 # Singleton client
 _gemini_model = None
@@ -132,21 +132,31 @@ Retourne UNIQUEMENT le tableau JSON, sans markdown ni explication."""
     try:
         response = model.generate_content(prompt)
         raw = _strip_markdown(response.text)
+        logger.info(f"Gemini raw response (first 300 chars): {raw[:300]}")
         ranking = json.loads(raw)
 
-        # Index des offres par id pour lookup O(1)
-        jobs_by_id = {j.get("id"): j for j in jobs}
+        # Index par id normalisé en int pour absorber les "42", 42.0, 42 de Gemini
+        def _norm_id(v):
+            try:
+                return int(float(v))
+            except (TypeError, ValueError):
+                return v
+
+        jobs_by_id = {_norm_id(j.get("id")): j for j in jobs}
+        logger.info(f"Reranking: {len(jobs)} jobs in pool, Gemini returned {len(ranking)} items")
 
         result = []
         for item in ranking[:top_k]:
-            job_id = item.get("id")
+            job_id = _norm_id(item.get("id"))
             if job_id in jobs_by_id:
                 job = dict(jobs_by_id[job_id])
                 job["ai_match_reason"] = item.get("ai_match_reason")
                 job["score"] = round(float(item.get("ai_score", job.get("score", 0.0))), 4)
                 result.append(job)
+            else:
+                logger.warning(f"Gemini returned unknown id={job_id!r}, skipping")
 
-        logger.info(f"Gemini reranking: {len(result)} jobs returned")
+        logger.info(f"Gemini reranking: {len(result)} jobs matched and returned")
         return result
 
     except Exception as e:
