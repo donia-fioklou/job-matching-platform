@@ -1,13 +1,15 @@
 ﻿"use client";
 
+
 import { useState } from "react";
 import { Candidate, MatchResponse } from "@/lib/types";
 import { CandidateCard } from "@/components/CandidateCard";
 
 export default function Home() {
   const [description, setDescription] = useState("");
-  const [topK, setTopK] = useState(10);
-  const [minScore, setMinScore] = useState(0);
+  // Valeurs fixes imposées
+  const topK = 3;
+  const minScore = 0.3;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<MatchResponse | null>(null);
@@ -27,7 +29,7 @@ export default function Home() {
         body: JSON.stringify({
           job_description: description.trim(),
           top_k: topK,
-          min_score: minScore / 100,
+          min_score: minScore,
         }),
       });
 
@@ -77,34 +79,6 @@ export default function Home() {
             />
 
             <div className="flex flex-wrap gap-4 items-end">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-slate-600">Nombre de profils</label>
-                <select
-                  value={topK}
-                  onChange={(e) => setTopK(Number(e.target.value))}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                >
-                  {[5, 10, 20, 30, 50].map((n) => (
-                    <option key={n} value={n}>{n} profils</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-slate-600">
-                  Score minimum : <span className="text-indigo-600 font-bold">{minScore}%</span>
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={80}
-                  step={5}
-                  value={minScore}
-                  onChange={(e) => setMinScore(Number(e.target.value))}
-                  className="w-40 accent-indigo-600"
-                />
-              </div>
-
               <button
                 type="submit"
                 disabled={loading || !description.trim()}

@@ -80,6 +80,7 @@ def find_matching_jobs(
             contract_type,
             experience_level,
             salary_range,
+            LEFT(description, 500) AS description,
             1 - (embedding_description <=> CAST(:embedding AS vector)) AS score
         FROM job_offers
         WHERE embedding_description IS NOT NULL
@@ -105,7 +106,10 @@ def find_matching_jobs(
                 "contract_type": row["contract_type"],
                 "experience_level": row["experience_level"],
                 "salary_range": row["salary_range"],
+                "description": row["description"],
                 "score": round(score, 4),
+                "ai_match_reason": None,
+                "source_type": "database",
             })
 
     results.sort(key=lambda x: x["score"], reverse=True)
