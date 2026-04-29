@@ -14,8 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..models.candidate import Candidate
 from ..models.database import get_db
-from ..services.jsearch_service import search_fresh_jobs
-from ..services.llm_service import extract_cv_profile, rerank_jobs
+from ..services.llm_service import analyze_and_rank
 from ..services.matching_service import embed_text, extract_text_from_pdf, find_matching_jobs
 
 logger = logging.getLogger(__name__)
@@ -90,50 +89,30 @@ async def match_cv(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # ── Étape 2 : Profil structuré via Gemini (non bloquant) ─────────────────
+    # ── Étape 2 : Embedding (sans job_title — le profil sera extrait par Gemini plus tard) ──
     try:
-        profile = await asyncio.to_thread(extract_cv_profile, cv_text)
-    except Exception as e:
-        logger.warning(f"CV profile extraction skipped: {e}")
-        profile = {}
-
-    # ── Étape 3 : Embedding avec job_title enrichi ────────────────────────────
-    job_title = profile.get("job_title", "")
-    try:
-        cv_embedding = embed_text(cv_text, job_title=job_title)
+        cv_embedding = embed_text(cv_text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur embedding : {e}")
 
-    # ── Étape 4 : Recherche parallèle DB + JSearch ───────────────────────────
-    # On demande top_k*2 en DB pour donner plus de choix au re-ranker
-    location = profile.get("location", "")
-
+    # ── Étape 3 : Recherche vectorielle DB ───────────────────────────────────
     try:
-        db_jobs, live_jobs = await asyncio.gather(
-            asyncio.to_thread(
-                find_matching_jobs, db, cv_embedding,
-                top_k=min(top_k * 2, 40), min_score=min_score
-            ),
-            search_fresh_jobs(job_title, location, top_k=10),
+        all_jobs = await asyncio.to_thread(
+            find_matching_jobs, db, cv_embedding,
+            top_k=min(top_k * 2, 40), min_score=min_score
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la recherche : {e}")
-
-    all_jobs = db_jobs + live_jobs
     if not all_jobs:
         return MatchResponse(
             cv_text_preview=cv_text[:500] + ("..." if len(cv_text) > 500 else ""),
             total_matched=0,
             jobs=[],
-            cv_profile=profile or None,
+            cv_profile=None,
         )
 
-    # ── Étape 5 : Re-ranking Gemini ───────────────────────────────────────────
-    try:
-        ranked = await asyncio.to_thread(rerank_jobs, cv_text, profile, all_jobs, top_k)
-    except Exception as e:
-        logger.warning(f"Reranking skipped: {e}")
-        ranked = sorted(all_jobs, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
+    # ── Étape 4 : UN seul appel Gemini — extraction profil + re-ranking ──────
+    profile, ranked = await asyncio.to_thread(analyze_and_rank, cv_text, all_jobs, top_k)
 
     return MatchResponse(
         cv_text_preview=cv_text[:500] + ("..." if len(cv_text) > 500 else ""),

@@ -13,7 +13,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 # Singleton client
 _gemini_model = None
@@ -163,3 +163,86 @@ Retourne UNIQUEMENT le tableau JSON, sans markdown ni explication."""
         logger.warning(f"Gemini reranking failed: {e}")
         # Graceful fallback : tri cosine original
         return sorted(jobs, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
+
+
+def analyze_and_rank(cv_text: str, jobs: list, top_k: int) -> tuple:
+    """
+    Appel Gemini unique qui extrait le profil CV ET classe les offres.
+    Retourne (profile_dict, ranked_jobs_list).
+    Remplace l'enchaînement extract_cv_profile + rerank_jobs pour diviser par 2
+    le nombre d'appels API Gemini par requête /candidates/match.
+    """
+    model = _get_gemini()
+    if not model or not jobs:
+        fallback = sorted(jobs, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
+        return {}, fallback
+
+    def _norm_id(v):
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return v
+
+    jobs_for_ranking = [
+        {
+            "id": j.get("id"),
+            "title": j.get("title", ""),
+            "company": j.get("company", ""),
+            "location": j.get("location", ""),
+            "description": (j.get("description") or "")[:400],
+        }
+        for j in jobs
+    ]
+
+    prompt = f"""Tu es un expert en recrutement. Analyse ce CV et effectue deux tâches en un seul appel.
+
+CV (2000 premiers caractères) :
+{cv_text[:2000]}
+
+OFFRES À CLASSER :
+{json.dumps(jobs_for_ranking, ensure_ascii=False)}
+
+Retourne UNIQUEMENT cet objet JSON, sans markdown ni explication :
+{{
+  "profile": {{
+    "job_title": "intitulé principal du poste recherché",
+    "skills": ["compétence1", "compétence2"],
+    "years_experience": 0,
+    "location": "ville ou pays"
+  }},
+  "ranking": [
+    {{"id": <id exact de l'offre>, "ai_score": 0.0, "ai_match_reason": "phrase courte en français"}},
+    ...
+  ]
+}}
+
+Le tableau "ranking" doit contenir les {top_k} offres les plus pertinentes, du plus au moins pertinent."""
+
+    try:
+        response = model.generate_content(prompt)
+        raw = _strip_markdown(response.text)
+        logger.info(f"analyze_and_rank raw (300 chars): {raw[:300]}")
+        data = json.loads(raw)
+
+        profile = data.get("profile", {})
+        ranking = data.get("ranking", [])
+
+        jobs_by_id = {_norm_id(j.get("id")): j for j in jobs}
+        result = []
+        for item in ranking[:top_k]:
+            job_id = _norm_id(item.get("id"))
+            if job_id in jobs_by_id:
+                job = dict(jobs_by_id[job_id])
+                job["ai_match_reason"] = item.get("ai_match_reason")
+                job["score"] = round(float(item.get("ai_score", job.get("score", 0.0))), 4)
+                result.append(job)
+            else:
+                logger.warning(f"analyze_and_rank: unknown id={job_id!r}")
+
+        logger.info(f"analyze_and_rank: profile={profile.get('job_title')!r}, {len(result)} jobs")
+        return profile, result
+
+    except Exception as e:
+        logger.warning(f"analyze_and_rank failed: {e}")
+        fallback = sorted(jobs, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
+        return {}, fallback
