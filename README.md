@@ -4,17 +4,19 @@
 
 ## Problématique
 
-Les offres d’emploi sont collectées depuis plusieurs sites, puis exposées via une API et un frontend.  
-Comment centraliser, nettoyer, historiser et rendre consultables ces données de manière robuste, tout en préparant une future brique de matching entre candidats et offres ?
+Les offres d’emploi sont dispersées sur de nombreux sites, et les candidats peinent à trouver celles qui correspondent réellement à leur profil.  
+Comment centraliser, nettoyer, historiser et rendre consultables ces données de manière robuste, puis mettre en relation automatiquement les candidats et les offres grâce à un matching sémantique ?
 
-## Solution : une architecture moderne de collecte et d’exposition des données
+## Solution : une architecture moderne de collecte, d’exposition et de matching
 
 ```mermaid
 flowchart LR
     S1[Sites d'emploi] --> A[Airflow<br/>scraping]
-    A --> P[(Supabase PostgreSQL)]
-    P --> F[FastAPI<br/>API REST]
-    F --> W[Applications / Frontend]
+    A --> P[(Supabase PostgreSQL<br/>+ pgvector)]
+    P --> F[FastAPI<br/>API REST + matching]
+    F --> W[Frontend recruteur<br/>Next.js]
+    F --> M[Application mobile<br/>candidats]
+    M -. CV / texte .-> F
 ```
 
 ### Extract : collecter les offres d’emploi
@@ -34,14 +36,14 @@ flowchart LR
 
 ### Transform : normaliser et préparer les données
 
-La transformation prépare les offres pour un stockage exploitable et une utilisation future dans des fonctionnalités de matching.
+La transformation prépare les offres pour un stockage exploitable et pour le matching sémantique.
 
 | Problème constaté | Technique utilisée |
 |---|---|
 | Données issues de sources différentes | Normalisation des champs communs |
 | Données dupliquées | Déduplication au niveau de la base Supabase |
 | Données incomplètes | Conservation des champs utiles et suivi des valeurs manquantes |
-| Préparation au matching futur | Prévoir des champs comme `skills_text` et `embedding_description` |
+| Matching candidat/offre | Champs `skills_text` et `embedding_description` (vecteur 512 dimensions) |
 
 ### Load : stocker et exposer les données
 
@@ -52,14 +54,61 @@ La transformation prépare les offres pour un stockage exploitable et une utilis
   - de filtrer par entreprise, lieu ou source
   - d’accéder aux statistiques globales
   - de vérifier l’état de santé de l’API et de la base
+  - de recommander des offres à un candidat grâce au matching sémantique
+
+## Matching sémantique candidat / offre
+
+Le matching repose sur des embeddings : le profil d’un candidat (CV ou texte libre) et chaque offre sont transformés en vecteurs, puis comparés par similarité.
+
+### Modèle d’embedding
+
+| Caractéristique | Valeur |
+|---|---|
+| Modèle | `sentence-transformers/distiluse-base-multilingual-cased` |
+| Dimensions | 512 |
+| Langues | Multilingue (français, anglais et 48 autres) |
+| Chargement | Singleton, chargé une seule fois au démarrage de l’API |
+
+Le chargement en singleton évite de recharger le modèle à chaque requête, ce qui garde des temps de réponse faibles.
+
+### Pipeline de matching
+
+```mermaid
+flowchart LR
+    I[CV PDF ou texte] --> E1[1. Extraction du texte brut]
+    E1 --> E2[2. Embedding 512-dim]
+    E2 --> E3[3. N plus proches voisins<br/>cosine via pgvector]
+    E3 --> E4[4. Filtrage par score minimum]
+    E4 --> E5[5. Tri décroissant par score]
+    E5 --> R[Offres recommandées]
+```
+
+1. **Extraction du texte brut** : `pdfplumber` pour les CV, texte direct pour les descriptions d’offres.
+2. **Génération de l’embedding** de dimension 512.
+3. **Recherche des N plus proches voisins** par similarité cosine via `pgvector`.
+4. **Filtrage** par score minimum.
+5. **Tri décroissant** par score.
+
+## Application mobile pour les candidats
+
+Une application mobile est dédiée aux candidats. Elle s’appuie sur l’API FastAPI pour :
+
+- consulter et filtrer les offres collectées
+- soumettre un CV ou un texte de profil
+- recevoir les offres les plus proches de leur profil, classées par score de similarité
+
+Côté recruteurs, l’interface web `recruiter-web` (Next.js) reste le point d’accès.
 
 ## Architecture technique
 
 - **Airflow** : orchestration des scrapers
-- **Supabase PostgreSQL** : stockage managé des offres d’emploi
-- **FastAPI** : API REST pour exposer les données
+- **Supabase PostgreSQL + pgvector** : stockage managé des offres et recherche vectorielle
+- **FastAPI** : API REST pour exposer les données et le matching
+- **sentence-transformers** : génération des embeddings multilingues
+- **pdfplumber** : extraction du texte des CV
 - **Docker Compose** : déploiement local de l’infrastructure
-- **Next.js** : frontend applicatif dans `recruiter-web`
+- **Next.js** : frontend recruteur dans `recruiter-web`
+- **Application mobile** : interface dédiée aux candidats
 
 ## Structure du projet
 
@@ -67,8 +116,8 @@ La transformation prépare les offres pour un stockage exploitable et une utilis
 job-matching-platform/
 ├── scrapers/               # Scripts de collecte
 ├── airflow/dags/           # Orchestration Airflow (3 DAGs)
-├── api/                    # FastAPI REST endpoints
-├── recruiter-web/          # Frontend Next.js
+├── api/                    # FastAPI REST endpoints + matching
+├── recruiter-web/          # Frontend Next.js (recruteurs)
 ├── database/init.sql       # Schéma PostgreSQL
 ├── docker-compose.yml      # Infrastructure complète
 ├── init_supabase.py        # Initialisation de la base
@@ -90,6 +139,8 @@ docker-compose up -d
    - Airflow : `http://localhost:8080`
    - API : `http://localhost:8000/docs`
    - Health check : `http://localhost:8000/health`
+
+> Au démarrage, l’API charge le modèle d’embedding une seule fois. Le premier lancement peut donc être plus long (téléchargement du modèle).
 
 ## Vérification des données
 
@@ -117,6 +168,8 @@ Accéder au dashboard Supabase puis ouvrir la table `job_offers` dans le Table E
 | `GET /health` | Health check basique |
 | `GET /health/database` | Vérification de la base PostgreSQL |
 | `GET /health/full` | Health check complet avec métriques |
+
+Les endpoints de matching suivent le pipeline décrit plus haut (CV ou texte en entrée, offres classées par score en sortie) ; voir `http://localhost:8000/docs` pour leur documentation à jour.
 
 ## Requêtes utiles
 
@@ -147,7 +200,8 @@ Quelques points à contrôler après exécution :
 - les doublons sont gérés avant exposition
 - l’API répond sur les endpoints principaux
 - le health check de la base retourne un statut valide
-- les données sont prêtes pour une future couche de matching sémantique
+- les embeddings des offres sont bien générés (dimension 512) et indexés via pgvector
+- le matching retourne des offres triées par score décroissant, au-dessus du score minimum
 
 ## Configuration
 
@@ -176,9 +230,9 @@ npm run dev
 - authentification de l’API
 - rate limiting
 - cache Redis
-- endpoints de matching par embeddings
-- notifications temps réel
+- amélioration du matching (pondération des compétences, réajustement du score minimum)
+- notifications temps réel (nouvelles offres correspondant au profil du candidat)
 
 ## Crédit
 
-Projet réalisé à partir d’une architecture moderne combinant Airflow, Supabase, FastAPI et Next.js, avec une préparation orientée vers le matching candidat/offre.
+Projet réalisé à partir d’une architecture moderne combinant Airflow, Supabase (pgvector), FastAPI et Next.js, avec un matching sémantique candidat/offre et une application mobile dédiée aux candidats.
