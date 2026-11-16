@@ -270,59 +270,6 @@ file      : PDF (requis)
 4. Filtrage par score minimum
 5. Tri décroissant par score
 
----
-
-## Déploiement
-
-### VPS Contabo (`95.111.244.63`)
-
-```bash
-# Connexion
-ssh root@95.111.244.63
-cd /root/job-matching-platform
-
-# Mettre à jour et redéployer
-git pull origin main
-./deploy.sh pull
-
-# Ou manuellement :
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-```
-
-**Services Docker :**
-- `api` — FastAPI sur le port 8000
-- `airflow-webserver` — UI Airflow sur le port 8080
-- `airflow-scheduler` — Planificateur des DAGs
-- `postgres` — PostgreSQL pour les métadonnées Airflow
-
-### Recruiter Web (local / à déployer)
-
-```bash
-cd recruiter-web
-npm install
-npm run dev       # Développement → http://localhost:3000
-npm run build     # Build production
-npm start         # Serveur production
-```
-
----
-
-## Variables d'environnement
-
-Fichier `.env` à la racine du projet :
-
-```env
-# Supabase (base de données principale)
-SUPABASE_DATABASE_URL=postgresql://...
-SUPABASE_HOST=...
-SUPABASE_PORT=5432
-SUPABASE_DB=postgres
-SUPABASE_USER=postgres
-SUPABASE_PASSWORD=...
-
-# Next.js Recruiter Web (optionnel, défaut: http://95.111.244.63:8000)
-API_URL=http://95.111.244.63:8000
-```
 
 ---
 
